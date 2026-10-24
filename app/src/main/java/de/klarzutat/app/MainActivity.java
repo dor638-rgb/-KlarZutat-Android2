@@ -210,6 +210,9 @@ public class MainActivity extends Activity {
             connection.setRequestProperty("Accept-Language", "de,en;q=0.8");
             connection.setRequestProperty("User-Agent", "KlarZutatAndroid/1.1 (https://github.com/dor638-rgb/-KlarZutat-Android2)");
             int status = connection.getResponseCode();
+            // Open Food Facts liefert für einen nicht gefundenen Produktcode teils HTTP 404.
+            // Das ist kein Verbindungsfehler und soll verständlich erklärt werden.
+            if (status == 404) return null;
             if (status != 200) throw new java.io.IOException("HTTP " + status);
             StringBuilder data = new StringBuilder();
             try (BufferedReader reader = new BufferedReader(
