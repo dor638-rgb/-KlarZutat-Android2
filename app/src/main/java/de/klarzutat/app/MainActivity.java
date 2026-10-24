@@ -201,8 +201,8 @@ public class MainActivity extends Activity {
     private JSONObject fetchProduct(String host, String code) throws Exception {
         HttpURLConnection connection = null;
         try {
-            String fields = "product_name,brands,ingredients_text_de,ingredients_text,allergens_tags,additives_tags,nutriscore_grade,nutrition_grades,nova_group,nutriments,quantity";
-            URL url = new URL("https://" + host + "/api/v2/product/" + code + ".json?fields=" + fields);
+            String fields = "product_name_de,product_name,brands,ingredients_text_de,ingredients_text,allergens_tags,additives_tags,nutriscore_grade,nutrition_grades,nova_group,nutriments,quantity";
+            URL url = new URL("https://" + host + "/api/v2/product/" + code + ".json?lc=de&fields=" + fields);
             connection = (HttpURLConnection) url.openConnection();
             connection.setConnectTimeout(15000);
             connection.setReadTimeout(15000);
@@ -266,7 +266,7 @@ public class MainActivity extends Activity {
         card.addView(browser, params);
         browser.setOnClickListener(v -> {
             Intent intent = new Intent(Intent.ACTION_VIEW,
-                    Uri.parse("https://world.openfoodfacts.org/product/" + code));
+                    Uri.parse("https://de.openfoodfacts.org/product/" + code));
             try {
                 startActivity(intent);
             } catch (Exception ignored) {
@@ -278,7 +278,7 @@ public class MainActivity extends Activity {
     private void displayProduct(String code, JSONObject p) {
         resultArea.removeAllViews();
         LinearLayout summary = resultCard();
-        String name = first(p.optString("product_name"), "Produkt " + code);
+        String name = first(p.optString("product_name_de"), first(p.optString("product_name"), "Produkt " + code));
         summary.addView(label(name, 23, DARK, true));
         String brand = p.optString("brands");
         if (!brand.isEmpty()) summary.addView(info(brand));
@@ -300,6 +300,9 @@ public class MainActivity extends Activity {
         LinearLayout ingredientsCard = resultCard();
         ingredientsCard.addView(label("🥬  Zutaten", 20, DARK, true));
         String ingredients = first(p.optString("ingredients_text_de"), p.optString("ingredients_text"));
+        if (p.optString("ingredients_text_de").trim().isEmpty() && !ingredients.isEmpty()) {
+            ingredientsCard.addView(info("Hinweis: Eine deutsche Zutatenliste ist für dieses Produkt noch nicht vorhanden. Originaltext:"));
+        }
         ingredientsCard.addView(paragraph(ingredients.isEmpty() ? "Keine Zutatenliste in der Datenbank vorhanden." : ingredients));
 
         LinearLayout allergyCard = resultCard();
