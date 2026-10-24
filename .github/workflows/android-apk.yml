@@ -21,6 +21,7 @@ jobs:
       - name: Android SDK Kommandozeilentools installieren
         run: |
           echo "ANDROID_HOME=$HOME/android-sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> "$GITHUB_ENV"
           mkdir -p "$HOME/android-sdk/cmdline-tools"
           curl --fail --location --retry 3 -o /tmp/android-tools.zip "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
           unzip -q /tmp/android-tools.zip -d /tmp/klarzutat-sdk
