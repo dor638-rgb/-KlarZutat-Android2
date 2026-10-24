@@ -18,10 +18,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Android SDK einrichten
-        uses: android-actions/setup-android@v3
       - name: Android 35 installieren
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+        run: |
+          echo "ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}" >> "$GITHUB_ENV"
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
       - name: Gradle 8.9 einrichten
         uses: gradle/actions/setup-gradle@v4
         with:
