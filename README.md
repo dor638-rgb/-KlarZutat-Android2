@@ -16,6 +16,17 @@ aus [Open Food Facts](https://world.openfoodfacts.org/) an.
 Du musst dafür **keinen Windows-PC** haben. GitHub-Login kann für das Herunterladen
 von Actions-Artifacts erforderlich sein.
 
+## Gesundheitsampel (Version 1.2)
+
+- **Grün**: Nutri-Score A oder B – günstigeres Nährwertprofil.
+- **Gelb**: Nutri-Score C – mittleres Nährwertprofil.
+- **Rot**: Nutri-Score D oder E – weniger günstiges Nährwertprofil.
+- **Grau**: Kein Nutri-Score hinterlegt; keine scheinbare Gesundheitsbewertung.
+- Wenn vorhanden, ergänzen die Datenbank-Nährwertstufen die Begründung (Zucker, Salz, Fett und gesättigte Fettsäuren).
+- Allergene werden gesondert gewarnt, Zusatzstoffe werden nicht pauschal als ungesund eingestuft.
+
+Wichtig: Die Ampel ist eine einfache Orientierung und keine medizinische Aussage.
+
 ## Funktionsweise
 
 - Google Code Scanner über Google Play-Dienste; ohne Kamera-Berechtigung in KlarZutat.

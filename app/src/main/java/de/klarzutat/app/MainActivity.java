@@ -201,7 +201,7 @@ public class MainActivity extends Activity {
     private JSONObject fetchProduct(String host, String code) throws Exception {
         HttpURLConnection connection = null;
         try {
-            String fields = "product_name_de,product_name,brands,ingredients_text_de,ingredients_text,allergens_tags,additives_tags,nutriscore_grade,nutrition_grades,nova_group,nutriments,quantity";
+            String fields = "product_name_de,product_name,brands,ingredients_text_de,ingredients_text,allergens_tags,additives_tags,nutriscore_grade,nutrition_grades,nova_group,nutriments,nutrient_levels,quantity";
             URL url = new URL("https://" + host + "/api/v2/product/" + code + ".json?lc=de&fields=" + fields);
             connection = (HttpURLConnection) url.openConnection();
             connection.setConnectTimeout(15000);
@@ -285,17 +285,7 @@ public class MainActivity extends Activity {
         summary.addView(info("Code: " + code));
         summary.addView(info("Menge: " + first(p.optString("quantity"), "nicht angegeben")));
 
-        String grade = first(p.optString("nutriscore_grade"), p.optString("nutrition_grades")).toUpperCase(Locale.ROOT);
-        String score;
-        int tint;
-        if (grade.matches("[AB]")) { score = "Günstigeres Nährwertprofil"; tint = GREEN; }
-        else if (grade.equals("C")) { score = "Mittleres Nährwertprofil"; tint = Color.rgb(161, 108, 26); }
-        else if (grade.matches("[DE]")) { score = "Weniger günstiges Nährwertprofil"; tint = Color.rgb(165, 66, 48); }
-        else { grade = "?"; score = "Keine Bewertung vorhanden"; tint = MUTED; }
-        TextView verdict = label("Nutri-Score " + grade + "  ·  " + score, 17, tint, true);
-        verdict.setPadding(0, dp(20), 0, dp(4));
-        summary.addView(verdict);
-        summary.addView(info("Der Nutri-Score bewertet das Nährwertprofil, nicht die persönliche Gesundheit."));
+        addTrafficLight(summary, p);
 
         LinearLayout ingredientsCard = resultCard();
         ingredientsCard.addView(label("🥬  Zutaten", 20, DARK, true));
@@ -333,7 +323,93 @@ public class MainActivity extends Activity {
         more.addView(info("NOVA beschreibt den Verarbeitungsgrad und ist keine Gesundheitsdiagnose."));
         more.addView(label("Zusatzstoffe", 16, DARK, true));
         more.addView(paragraph(tagList(p.optJSONArray("additives_tags"), false)));
+        more.addView(info("Ein Zusatzstoff ist nicht automatisch schädlich. Die Bewertung hängt vom Stoff, seiner Menge und dem gesamten Lebensmittel ab."));
         screen.post(() -> screen.smoothScrollTo(0, resultArea.getTop()));
+    }
+
+    /**
+     * Die Ampel steht ausschließlich für das Nährwertprofil nach Nutri-Score.
+     * Einzelne Zusatzstoffe oder Allergene sind keine automatische Rot-Bewertung.
+     */
+    private void addTrafficLight(LinearLayout summary, JSONObject product) {
+        String grade = first(product.optString("nutriscore_grade"),
+                             product.optString("nutrition_grades")).trim().toUpperCase(Locale.ROOT);
+        int tint;
+        String colorName;
+        String verdict;
+        String reason;
+        if (grade.equals("A") || grade.equals("B")) {
+            tint = Color.rgb(20, 99, 60);
+            colorName = "GRÜN";
+            verdict = "Günstigeres Nährwertprofil";
+            reason = "Nutri-Score " + grade + ": Im Nutri-Score-Vergleich schneidet dieses Lebensmittel günstiger ab.";
+        } else if (grade.equals("C")) {
+            tint = Color.rgb(145, 94, 19);
+            colorName = "GELB";
+            verdict = "Mittleres Nährwertprofil";
+            reason = "Nutri-Score C: Das Nährwertprofil liegt im mittleren Bereich.";
+        } else if (grade.equals("D") || grade.equals("E")) {
+            tint = Color.rgb(158, 48, 40);
+            colorName = "ROT";
+            verdict = "Weniger günstiges Nährwertprofil";
+            reason = "Nutri-Score " + grade + ": Im Nutri-Score-Vergleich schneidet dieses Lebensmittel weniger günstig ab.";
+        } else {
+            tint = Color.rgb(95, 106, 100);
+            colorName = "GRAU";
+            verdict = "Noch keine Ampel-Bewertung möglich";
+            reason = "Für dieses Produkt ist kein verlässlicher Nutri-Score hinterlegt. Wir geben deshalb keine Gesundheitsfarbe vor.";
+        }
+
+        LinearLayout traffic = new LinearLayout(this);
+        traffic.setOrientation(LinearLayout.VERTICAL);
+        traffic.setPadding(dp(16), dp(15), dp(16), dp(15));
+        traffic.setBackground(shape(tint, 15, tint));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
+        params.topMargin = dp(17);
+        summary.addView(traffic, params);
+
+        traffic.addView(label("●  " + colorName + "  ·  " + verdict, 18, WHITE, true));
+        TextView explanation = label(reason, 14, WHITE, false);
+        explanation.setPadding(0, dp(9), 0, 0);
+        traffic.addView(explanation);
+
+        JSONObject levels = product.optJSONObject("nutrient_levels");
+        StringBuilder details = new StringBuilder();
+        appendNutrientLevel(details, levels, "sugars", "Zucker");
+        appendNutrientLevel(details, levels, "salt", "Salz");
+        appendNutrientLevel(details, levels, "saturated-fat", "Gesättigte Fettsäuren");
+        appendNutrientLevel(details, levels, "fat", "Fett");
+        if (details.length() > 0) {
+            TextView nutrientHints = label("Einzelwerte laut Datenbank: " + details, 13, WHITE, false);
+            nutrientHints.setPadding(0, dp(11), 0, 0);
+            traffic.addView(nutrientHints);
+        }
+
+        TextView limit = info("Die Ampel beurteilt nur das Nährwertprofil. Sie sagt nicht allein, ob ein Lebensmittel für dich gesund oder ungesund ist.");
+        limit.setPadding(0, dp(10), 0, 0);
+        summary.addView(limit);
+
+        JSONArray allergens = product.optJSONArray("allergens_tags");
+        if (allergens != null && allergens.length() > 0) {
+            TextView allergyAlert = label("⚠ Allergene erfasst: " + tagList(allergens, true), 14,
+                                        Color.rgb(145, 50, 36), true);
+            allergyAlert.setPadding(0, dp(12), 0, 0);
+            summary.addView(allergyAlert);
+        }
+    }
+
+    private void appendNutrientLevel(StringBuilder b, JSONObject levels, String key, String label) {
+        if (levels == null) return;
+        String level = levels.optString(key, "").trim().toLowerCase(Locale.ROOT);
+        String german;
+        switch (level) {
+            case "low": german = "niedrig"; break;
+            case "moderate": german = "mittel"; break;
+            case "high": german = "hoch"; break;
+            default: return;
+        }
+        if (b.length() > 0) b.append(" · ");
+        b.append(label).append(": ").append(german);
     }
 
     private void nutritionLine(LinearLayout parent, JSONObject n, String key, String name, String unit) {
