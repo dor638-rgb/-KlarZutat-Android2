@@ -1,6 +1,8 @@
 package de.klarzutat.app;
 
 import android.app.Activity;
+import android.content.Intent;
+import android.net.Uri;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -147,47 +149,127 @@ public class MainActivity extends Activity {
             showMessage("Ungültiger Produktcode", "Bitte eine gültige EAN-, UPC- oder GTIN-Nummer mit Prüfziffer eingeben.");
             return;
         }
-        ((InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(codeInput.getWindowToken(), 0);
+        ((InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE))
+                .hideSoftInputFromWindow(codeInput.getWindowToken(), 0);
         codeInput.clearFocus();
         showMessage("Suche Produkt …", "Produktinformationen werden von Open Food Facts geladen.");
         int current = ++requestNumber;
+
         new Thread(() -> {
-            String message = null;
             JSONObject product = null;
-            HttpURLConnection connection = null;
+            String message = null;
+            boolean notFound = false;
+
             try {
-                String fields = "product_name,brands,ingredients_text_de,ingredients_text,allergens_tags,additives_tags,nutriscore_grade,nutrition_grades,nova_group,nutriments,quantity";
-                URL url = new URL("https://world.openfoodfacts.org/api/v2/product/" + code + ".json?fields=" + fields);
-                connection = (HttpURLConnection) url.openConnection();
-                connection.setConnectTimeout(12000);
-                connection.setReadTimeout(12000);
-                connection.setRequestProperty("Accept", "application/json");
-                connection.setRequestProperty("User-Agent", "KlarZutatAndroid/1.0 (https://github.com/dor638-rgb/-KlarZutat-Android2)");
-                if (connection.getResponseCode() != 200) throw new Exception("HTTP " + connection.getResponseCode());
-                StringBuilder data = new StringBuilder();
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream(), "UTF-8"))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        data.append(line);
-                        if (data.length() > 1000000) throw new Exception("Antwort zu groß");
+                product = fetchProduct("world.openfoodfacts.org", code);
+                notFound = product == null;
+            } catch (Exception first) {
+                Exception actual = first;
+                // Nur bei Verbindungsproblemen / Serverfehlern einen zweiten Host versuchen.
+                // Bei Rate-Limits und Zugriffssperren vermeiden wir unnötige Anfragen.
+                if (canTryFallback(first)) {
+                    try {
+                        product = fetchProduct("de.openfoodfacts.org", code);
+                        notFound = product == null;
+                        actual = null;
+                    } catch (Exception second) {
+                        actual = second;
                     }
                 }
-                JSONObject answer = new JSONObject(data.toString());
-                if (answer.optInt("status", 0) == 1) product = answer.optJSONObject("product");
-                if (product == null) message = "Dieses Produkt ist noch nicht in der Datenbank erfasst. Prüfe den Code oder scanne ein anderes Produkt.";
-            } catch (Exception e) {
-                message = "Die Produktdaten konnten nicht geladen werden. Bitte prüfe deine Internetverbindung und versuche es noch einmal.";
-            } finally {
-                if (connection != null) connection.disconnect();
+                if (actual != null) message = explainNetworkError(actual);
             }
+
+            if (notFound) {
+                message = "Für diesen gültigen Strichcode sind bei Open Food Facts derzeit keine Produktdaten hinterlegt. Das bedeutet nicht, dass das Produkt unbekannt oder ungesund ist.";
+            }
+
             final JSONObject found = product;
-            final String error = message;
+            final String info = message;
+            final boolean missing = notFound;
             runOnUiThread(() -> {
                 if (current != requestNumber) return;
-                if (found != null) displayProduct(code, found);
-                else showMessage("Keine Produktdaten", error);
+                if (found != null) {
+                    displayProduct(code, found);
+                } else {
+                    showLookupIssue(missing ? "Produkt nicht erfasst" : "Verbindung fehlgeschlagen",
+                            info == null ? "Unerwartete Antwort von Open Food Facts." : info, code);
+                }
             });
         }).start();
+    }
+
+    private JSONObject fetchProduct(String host, String code) throws Exception {
+        HttpURLConnection connection = null;
+        try {
+            String fields = "product_name,brands,ingredients_text_de,ingredients_text,allergens_tags,additives_tags,nutriscore_grade,nutrition_grades,nova_group,nutriments,quantity";
+            URL url = new URL("https://" + host + "/api/v2/product/" + code + ".json?fields=" + fields);
+            connection = (HttpURLConnection) url.openConnection();
+            connection.setConnectTimeout(15000);
+            connection.setReadTimeout(15000);
+            connection.setRequestProperty("Accept", "application/json");
+            connection.setRequestProperty("Accept-Language", "de,en;q=0.8");
+            connection.setRequestProperty("User-Agent", "KlarZutatAndroid/1.1 (https://github.com/dor638-rgb/-KlarZutat-Android2)");
+            int status = connection.getResponseCode();
+            if (status != 200) throw new java.io.IOException("HTTP " + status);
+            StringBuilder data = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(connection.getInputStream(), "UTF-8"))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    data.append(line);
+                    if (data.length() > 1000000) throw new java.io.IOException("Antwort zu groß");
+                }
+            }
+            JSONObject answer = new JSONObject(data.toString());
+            return answer.optInt("status", 0) == 1 ? answer.optJSONObject("product") : null;
+        } finally {
+            if (connection != null) connection.disconnect();
+        }
+    }
+
+    private boolean canTryFallback(Exception problem) {
+        String msg = problem.getMessage() == null ? "" : problem.getMessage();
+        if (msg.contains("HTTP 403") || msg.contains("HTTP 429") || msg.contains("HTTP 400"))
+            return false;
+        return problem instanceof java.io.IOException;
+    }
+
+    private String explainNetworkError(Exception e) {
+        String message = e.getMessage() == null ? "" : e.getMessage();
+        if (message.contains("HTTP 403"))
+            return "Open Food Facts hat die Anfrage abgelehnt (HTTP 403). Öffne das Produkt über den Button unten im Browser.";
+        if (message.contains("HTTP 429"))
+            return "Zu viele Anfragen (HTTP 429). Bitte versuche es später erneut.";
+        if (message.contains("HTTP 503") || message.contains("HTTP 502") || message.contains("HTTP 500"))
+            return "Der Produktdaten-Dienst ist momentan nicht erreichbar (" + message + "). Versuche es später erneut.";
+        if (e instanceof java.net.UnknownHostException)
+            return "Open Food Facts konnte nicht erreicht werden (DNS). Prüfe WLAN, mobile Daten oder den privaten DNS-Dienst auf deinem Handy.";
+        if (e instanceof java.net.SocketTimeoutException)
+            return "Die Anfrage hat zu lange gedauert (Zeitüberschreitung). Bitte versuche es erneut.";
+        if (e instanceof javax.net.ssl.SSLException)
+            return "Die sichere HTTPS-Verbindung ist fehlgeschlagen. Prüfe Datum/Uhrzeit und Android-Systemupdates.";
+        if (message.startsWith("HTTP "))
+            return "Open Food Facts antwortet mit " + message + ". Teste den Browser-Link unten.";
+        return "Verbindungs- oder Datenfehler (" + e.getClass().getSimpleName() + "). Teste den Browser-Link unten und prüfe deine Internetverbindung.";
+    }
+
+    private void showLookupIssue(String title, String message, String code) {
+        showMessage(title, message);
+        if (resultArea.getChildCount() == 0) return;
+        LinearLayout card = (LinearLayout) resultArea.getChildAt(0);
+        Button browser = button("Produkt im Browser öffnen", Color.rgb(227, 240, 231), GREEN);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, dp(50));
+        params.topMargin = dp(14);
+        card.addView(browser, params);
+        browser.setOnClickListener(v -> {
+            Intent intent = new Intent(Intent.ACTION_VIEW,
+                    Uri.parse("https://world.openfoodfacts.org/product/" + code));
+            try {
+                startActivity(intent);
+            } catch (Exception ignored) {
+                showMessage("Browser nicht verfügbar", "Öffne https://world.openfoodfacts.org im Browser.");
+            }
+        });
     }
 
     private void displayProduct(String code, JSONObject p) {
