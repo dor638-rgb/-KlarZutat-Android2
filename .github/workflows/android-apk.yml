@@ -18,11 +18,15 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Android 35 installieren
+      - name: Android SDK Kommandozeilentools installieren
         run: |
-          echo "ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}" >> "$GITHUB_ENV"
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          echo "ANDROID_HOME=$HOME/android-sdk" >> "$GITHUB_ENV"
+          mkdir -p "$HOME/android-sdk/cmdline-tools"
+          curl --fail --location --retry 3 -o /tmp/android-tools.zip "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
+          unzip -q /tmp/android-tools.zip -d /tmp/klarzutat-sdk
+          mv /tmp/klarzutat-sdk/cmdline-tools "$HOME/android-sdk/cmdline-tools/latest"
+          yes | "$HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$HOME/android-sdk" --licenses > /dev/null || true
+          "$HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$HOME/android-sdk" "platforms;android-35" "build-tools;35.0.0" "platform-tools"
       - name: Gradle 8.9 einrichten
         uses: gradle/actions/setup-gradle@v4
         with:
